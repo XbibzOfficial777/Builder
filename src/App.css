@@ -1,4 +1,9 @@
-/* Terabox Downloader - Custom Styles */
+/* WebToApk Builder - Custom Styles */
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
 
 /* Smooth scrolling */
 html {
@@ -12,17 +17,16 @@ html {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 4px;
+  background: #1e293b;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
+  background: #475569;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: #64748b;
 }
 
 /* Animation for loading spinner */
@@ -36,12 +40,22 @@ html {
   animation: spin 1s linear infinite;
 }
 
-/* Gradient text */
+/* Gradient text animation */
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 .gradient-text {
-  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  background-size: 200% auto;
+  animation: gradient 3s ease infinite;
 }
 
 /* Card hover effect */
@@ -51,36 +65,14 @@ html {
 
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-}
-
-/* File tree indentation lines */
-.file-tree-line {
-  position: relative;
-}
-
-.file-tree-line::before {
-  content: '';
-  position: absolute;
-  left: -12px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: hsl(var(--border));
-}
-
-/* Toast notification styles */
-[data-sonner-toast] {
-  font-family: inherit;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.3);
 }
 
 /* Input focus ring */
 input:focus,
 textarea:focus {
   outline: none;
-  ring: 2px;
-  ring-offset: 2px;
-  ring-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 
 /* Button press effect */
@@ -88,50 +80,37 @@ button:active {
   transform: scale(0.98);
 }
 
-/* Badge styles */
-.badge-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+/* Glassmorphism effect */
+.glass {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 /* Responsive adjustments */
 @media (max-width: 640px) {
-  .container {
-    padding-left: 1rem;
-    padding-right: 1rem;
+  .responsive-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-/* Dark mode adjustments */
-.dark .bg-gradient-to-br {
-  background: linear-gradient(to bottom right, hsl(var(--background)), hsl(var(--muted) / 0.2));
+/* Tab transitions */
+[data-state="active"] {
+  transition: all 0.2s ease;
 }
 
-/* Loading skeleton */
-.skeleton {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted)) 25%,
-    hsl(var(--muted) / 0.5) 50%,
-    hsl(var(--muted)) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s infinite;
+/* Alert animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-@keyframes skeleton-loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
+.alert-animate {
+  animation: slideIn 0.3s ease-out;
 }

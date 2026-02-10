@@ -1,243 +1,208 @@
-# 🚀 Terabox Downloader
+# WebToApk Builder
 
-[![CI - Testing & Validation](https://github.com/yourusername/terabox-downloader/actions/workflows/ci-testing.yml/badge.svg)](https://github.com/yourusername/terabox-downloader/actions/workflows/ci-testing.yml)
-[![CD - Deploy to Netlify](https://github.com/yourusername/terabox-downloader/actions/workflows/cd-deploy.yml/badge.svg)](https://github.com/yourusername/terabox-downloader/actions/workflows/cd-deploy.yml)
-[![Security Scan](https://github.com/yourusername/terabox-downloader/actions/workflows/security-scan.yml/badge.svg)](https://github.com/yourusername/terabox-downloader/actions/workflows/security-scan.yml)
+Convert any website to Android APK using GitHub Actions! This tool provides a simple web interface to configure and build Android WebView apps.
 
-A modern, fast, and reliable web application to download files from Terabox without requiring a login. Built with React, TypeScript, Node.js, and complete CI/CD pipeline using GitHub Actions.
+![WebToApk Builder](https://img.shields.io/badge/WebToApk-Builder-blue)
+![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-green)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-## ✨ Features
+## Features
 
-- 📁 **Download Files & Folders** - Support for both individual files and entire folders
-- 🔓 **No Login Required** - Download files without Terabox account
-- ⚡ **Fast Downloads** - Get direct download links without speed limits
-- 🔒 **Secure** - Built with security best practices
-- 📱 **Responsive Design** - Works on desktop, tablet, and mobile
-- 🎨 **Modern UI** - Beautiful interface with dark mode support
-- 🧪 **Fully Tested** - Comprehensive test suite with CI/CD
+- **Easy Configuration**: Simple web form to customize your APK
+- **Custom App Name**: Name your app anything you want
+- **Custom Icon**: Use your own app icon
+- **Version Control**: Manage app versions easily
+- **GitHub Actions Backend**: Free, reliable cloud building
+- **Signed APK**: Output is ready to install or distribute
+- **WebView Features**:
+  - Pull-to-refresh
+  - Back button navigation
+  - Progress indicator
+  - Full JavaScript support
+  - Local storage support
 
-## 🛠️ Tech Stack
+## Quick Start
 
-### Frontend
-- React 18 + TypeScript
-- Vite (Build Tool)
-- Tailwind CSS
-- shadcn/ui Components
-- Lucide Icons
+### 1. Fork This Repository
 
-### Backend
-- Node.js + Express
-- Axios (HTTP Client)
-- Cheerio (HTML Parsing)
-- Jest (Testing)
-- ESLint (Linting)
+Click the "Fork" button at the top right of this page to create your own copy.
 
-### DevOps
-- GitHub Actions (CI/CD)
-- Netlify (Hosting)
-- Snyk (Security Scanning)
-- CodeQL (Code Analysis)
+### 2. Enable GitHub Pages
 
-## 🚀 Quick Start
+1. Go to your forked repository settings
+2. Navigate to "Pages" section
+3. Select "GitHub Actions" as the source
+4. The site will be published automatically
 
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
+### 3. Create GitHub Personal Access Token
 
-### Installation
+1. Go to [GitHub Settings > Tokens](https://github.com/settings/tokens)
+2. Click "Generate new token (classic)"
+3. Select the following scopes:
+   - `repo` - Full control of private repositories
+   - `workflow` - Update GitHub Action workflows
+4. Copy the generated token
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/terabox-downloader.git
-cd terabox-downloader
-```
+### 4. Use the Builder
 
-2. Install all dependencies:
-```bash
-npm run install:all
-```
+1. Open your published GitHub Pages site
+2. Fill in the required information:
+   - **Website URL**: The website you want to convert
+   - **App Name**: Your app's display name
+   - **Package Name**: Unique identifier (e.g., com.yourcompany.app)
+   - **App Version**: Semantic version (e.g., 1.0.0)
+   - **GitHub Token**: Your personal access token
+   - **Repository**: Your forked repo (username/repo-name)
+3. Click "Build APK"
+4. Wait for the build to complete
+5. Download your APK from GitHub Actions artifacts
 
-3. Set up environment variables:
-```bash
-# Frontend
-cp .env.example .env
+## Configuration Options
 
-# Backend
-cp backend/.env.example backend/.env
-```
+### Basic Settings
 
-4. Start development servers:
-```bash
-# Start both frontend and backend
-npm run start:dev
+| Field | Description | Required |
+|-------|-------------|----------|
+| Website URL | URL of the website to convert | Yes |
+| App Name | Display name of your app | Yes |
+| App Version | Version number (e.g., 1.0.0) | Yes |
+| Icon URL | URL to your app icon (PNG recommended) | No |
 
-# Or start separately
-npm run dev          # Frontend only
-cd backend && npm run dev  # Backend only
-```
+### Advanced Settings
 
-5. Open http://localhost:5173 in your browser
+| Field | Description | Default |
+|-------|-------------|---------|
+| Package Name | Unique app identifier | com.webtoapk.app |
+| Version Code | Integer version for updates | 1 |
 
-## 📝 Usage
+### GitHub Settings
 
-1. Copy a Terabox share link (e.g., `https://teraboxapp.com/s/1AAAAAA`)
-2. Paste the link in the input field
-3. Enter password if the link is protected
-4. Click "Get Info" to see file details
-5. Click "Get All Download Links" or individual download buttons
-6. Copy or click download links to save files
+| Field | Description | Required |
+|-------|-------------|----------|
+| Repository | Your GitHub repo (owner/repo) | Yes |
+| Token | GitHub Personal Access Token | Yes |
 
-## 🧪 Testing
+## How It Works
 
-### Run All Tests
-```bash
-npm run test:all
-```
+1. **Frontend**: React-based web interface for configuration
+2. **GitHub Actions**: Automated build pipeline
+3. **Android Template**: Pre-configured WebView project
+4. **Output**: Signed APK ready for distribution
 
-### Backend Tests Only
-```bash
-cd backend && npm test
-```
-
-### With Coverage
-```bash
-cd backend && npm test -- --coverage
-```
-
-## 🔄 CI/CD Pipeline
-
-### Workflows
-
-1. **CI - Testing & Validation** (`.github/workflows/ci-testing.yml`)
-   - Runs on push to `main`/`develop` and PRs
-   - Backend unit and API integration tests
-   - Frontend build validation
-   - Security audit
-   - Code linting
-   - Quality gate check
-
-2. **CD - Deploy to Netlify** (`.github/workflows/cd-deploy.yml`)
-   - Triggers after CI passes on `main`
-   - Builds and deploys to Netlify
-   - Post-deployment smoke tests
-   - Automatic rollback on failure
-   - Slack notifications
-
-3. **Environment Setup** (`.github/workflows/environment-setup.yml`)
-   - Manual workflow dispatch
-   - Configures staging/production environments
-   - Validates configuration
-   - Runs smoke tests
-
-4. **Security Scan** (`.github/workflows/security-scan.yml`)
-   - Weekly scheduled scans
-   - Snyk vulnerability scanning
-   - Dependency review
-   - CodeQL analysis
-   - Secret detection
-
-### Required Secrets
-
-Configure these secrets in your GitHub repository:
-
-| Secret | Description |
-|--------|-------------|
-| `NETLIFY_AUTH_TOKEN` | Netlify authentication token |
-| `NETLIFY_SITE_ID` | Netlify site ID |
-| `SNYK_TOKEN` | Snyk API token |
-| `SLACK_WEBHOOK_URL` | Slack webhook for notifications |
-
-## 📁 Project Structure
+### Build Process
 
 ```
-terabox-downloader/
+User Input → GitHub API → GitHub Actions → Build APK → Release/Artifacts
+```
+
+## Project Structure
+
+```
+.
 ├── .github/
-│   └── workflows/          # GitHub Actions workflows
-├── backend/
-│   ├── src/
-│   │   ├── config/         # Configuration files
-│   │   ├── routes/         # API routes
-│   │   └── server.js       # Express server
-│   ├── tests/              # Test files
-│   ├── package.json
-│   └── .env.example
-├── src/
-│   ├── components/         # React components
-│   ├── sections/           # Page sections
-│   ├── hooks/              # Custom hooks
-│   ├── types/              # TypeScript types
-│   ├── App.tsx             # Main app component
-│   └── main.tsx            # Entry point
-├── public/                 # Static assets
-├── dist/                   # Build output
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── tailwind.config.js
-└── README.md
+│   └── workflows/
+│       └── build-apk.yml    # GitHub Actions workflow
+├── android-template/         # Android project template
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── java/com/webtoapk/app/
+│   │   │   │   └── MainActivity.java
+│   │   │   ├── res/
+│   │   │   └── AndroidManifest.xml
+│   │   └── build.gradle
+│   ├── build.gradle
+│   └── gradle/
+├── src/                      # React frontend source
+├── public/
+└── index.html
 ```
 
-## 🔒 Security
+## Customization
 
-- Helmet.js for security headers
-- Express Rate Limit for API protection
-- CORS configuration
-- Input validation
-- Regular security scans with Snyk
-- Dependency vulnerability monitoring
-- CodeQL static analysis
+### Modifying the Android Template
 
-## 🚀 Deployment
+You can customize the Android app by editing files in `android-template/`:
 
-### Netlify (Recommended)
+- **MainActivity.java**: Modify WebView behavior
+- **AndroidManifest.xml**: Change app permissions
+- **build.gradle**: Update dependencies or SDK versions
 
-1. Connect your GitHub repo to Netlify
-2. Configure build settings:
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-3. Add environment variables
-4. Deploy!
+### Adding Features
 
-### Manual Deployment
+Common customizations:
 
-```bash
-# Build for production
-npm run build
+```java
+// Enable geolocation
+webSettings.setGeolocationEnabled(true);
 
-# Deploy backend
-cd backend
-npm start
+// Custom user agent
+webSettings.setUserAgentString("MyCustomApp/1.0");
+
+// Handle file uploads
+webView.setWebChromeClient(new WebChromeClient() {
+    // Override onShowFileChooser
+});
 ```
 
-## 🤝 Contributing
+## Troubleshooting
+
+### Build Fails
+
+1. Check GitHub Actions logs for errors
+2. Verify your token has correct permissions
+3. Ensure repository name format is correct (owner/repo)
+
+### App Shows Blank Screen
+
+1. Check if website allows iframe embedding
+2. Verify website URL is accessible
+3. Check for JavaScript errors in WebView
+
+### Icon Not Showing
+
+1. Ensure icon URL is publicly accessible
+2. Use PNG format for best compatibility
+3. Recommended size: 512x512 pixels
+
+## Security Notes
+
+- Keep your GitHub token private
+- Don't commit tokens to the repository
+- Use environment variables for sensitive data
+- Review GitHub Actions permissions
+
+## Requirements
+
+- GitHub account
+- Personal Access Token with `repo` scope
+- Website URL to convert
+
+## Technologies Used
+
+- **Frontend**: React, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: GitHub Actions
+- **Android**: Java, Android SDK, WebView
+
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - feel free to use this project for personal or commercial purposes.
 
-## ⚠️ Disclaimer
+## Support
 
-This tool is for educational purposes only. Users are responsible for complying with Terabox's Terms of Service and applicable laws. The developers assume no liability for misuse.
+If you find this project helpful, please give it a ⭐ on GitHub!
 
-## 🙏 Acknowledgments
+## Roadmap
 
-- [shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
-- [Lucide](https://lucide.dev/) for icons
-- [Netlify](https://netlify.com/) for hosting
-- [GitHub Actions](https://github.com/features/actions) for CI/CD
-
-## 📞 Support
-
-If you found this project helpful, please give it a ⭐ on GitHub!
-
-For issues and feature requests, please use the [GitHub Issues](https://github.com/yourusername/terabox-downloader/issues) page.
-
----
-
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+- [ ] Support for custom CSS/JS injection
+- [ ] Push notification support
+- [ ] Offline mode with service workers
+- [ ] Custom splash screen
+- [ ] App signing with custom keystore
+- [ ] Play Store publishing guide
