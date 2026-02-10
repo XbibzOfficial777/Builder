@@ -1,0 +1,354 @@
+name: Build WebToApk
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to convert to APK'
+        required: true
+        type: string
+      app_name:
+        description: 'Application Name'
+        required: true
+        type: string
+        default: 'WebApp'
+      package_name:
+        description: 'Package Name (e.g., com.example.app)'
+        required: true
+        type: string
+        default: 'com.webtoapk.app'
+      app_version:
+        description: 'App Version (e.g., 1.0.0)'
+        required: true
+        type: string
+        default: '1.0.0'
+      version_code:
+        description: 'Version Code (integer)'
+        required: true
+        type: string
+        default: '1'
+      icon_url:
+        description: 'Icon URL (optional)'
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      apk_name: ${{ steps.sign_apk.outputs.apk_name }}
+      release_tag: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download and setup Android Command Line Tools
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mv cmdline-tools latest
+          rm commandlinetools-linux-11076708_latest.zip
+
+      - name: Set environment variables
+        run: |
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+
+      - name: Accept licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Install build tools
+        run: |
+          sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
+
+      - name: Create Android project from template
+        run: |
+          mkdir -p $HOME/android-project
+          cp -r $GITHUB_WORKSPACE/android-template/* $HOME/android-project/
+          echo "=== Project structure ==="
+          ls -la $HOME/android-project/
+          echo "=== App directory ==="
+          ls -la $HOME/android-project/app/
+
+      - name: Update project with custom values
+        run: |
+          cd $HOME/android-project
+          
+          # Update app name
+          sed -i "s/APP_NAME_PLACEHOLDER/${{ github.event.inputs.app_name }}/g" app/src/main/res/values/strings.xml
+          
+          # Update package name in files
+          OLD_PACKAGE="com.webtoapk.app"
+          NEW_PACKAGE="${{ github.event.inputs.package_name }}"
+          
+          echo "Old package: $OLD_PACKAGE"
+          echo "New package: $NEW_PACKAGE"
+          
+          # Update build.gradle namespace and applicationId
+          sed -i "s/namespace '$OLD_PACKAGE'/namespace '$NEW_PACKAGE'/g" app/build.gradle
+          sed -i "s/applicationId \"$OLD_PACKAGE\"/applicationId \"$NEW_PACKAGE\"/g" app/build.gradle
+          
+          # Update AndroidManifest.xml
+          sed -i "s/package=\"$OLD_PACKAGE\"/package=\"$NEW_PACKAGE\"/g" app/src/main/AndroidManifest.xml
+          
+          # Only move file if package name is different
+          if [ "$OLD_PACKAGE" != "$NEW_PACKAGE" ]; then
+            echo "Package name changed, moving MainActivity.java..."
+            # Create new package directory structure
+            NEW_PACKAGE_PATH=$(echo "$NEW_PACKAGE" | tr '.' '/')
+            mkdir -p "app/src/main/java/$NEW_PACKAGE_PATH"
+            
+            # Update MainActivity.java package and move to new location
+            if [ -f "app/src/main/java/com/webtoapk/app/MainActivity.java" ]; then
+              sed -i "s/package $OLD_PACKAGE;/package $NEW_PACKAGE;/g" app/src/main/java/com/webtoapk/app/MainActivity.java
+              mv app/src/main/java/com/webtoapk/app/MainActivity.java "app/src/main/java/$NEW_PACKAGE_PATH/"
+              rm -rf app/src/main/java/com/webtoapk
+            fi
+          else
+            echo "Package name unchanged, skipping file move..."
+          fi
+          
+          # Update version
+          sed -i "s/VERSION_NAME_PLACEHOLDER/${{ github.event.inputs.app_version }}/g" app/build.gradle
+          sed -i "s/VERSION_CODE_PLACEHOLDER/${{ github.event.inputs.version_code }}/g" app/build.gradle
+          
+          # Update website URL in MainActivity
+          find app/src -name "MainActivity.java" -exec sed -i "s|WEBSITE_URL_PLACEHOLDER|${{ github.event.inputs.website_url }}|g" {} \;
+          
+          echo "=== Updated strings.xml ==="
+          cat app/src/main/res/values/strings.xml
+          echo "=== Updated build.gradle ==="
+          cat app/build.gradle
+          echo "=== Updated MainActivity.java ==="
+          find app/src -name "MainActivity.java" -exec cat {} \;
+
+      - name: Download and process icon
+        if: github.event.inputs.icon_url != ''
+        run: |
+          cd $HOME/android-project/app/src/main/res
+          
+          # Download icon
+          curl -L -o icon.png "${{ github.event.inputs.icon_url }}" || echo "Using default icon"
+          
+          if [ -f icon.png ]; then
+            # Create different sizes
+            mkdir -p mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi
+            
+            # Copy icon to all directories
+            cp icon.png mipmap-mdpi/ic_launcher.png
+            cp icon.png mipmap-hdpi/ic_launcher.png
+            cp icon.png mipmap-xhdpi/ic_launcher.png
+            cp icon.png mipmap-xxhdpi/ic_launcher.png
+            cp icon.png mipmap-xxxhdpi/ic_launcher.png
+            echo "Icon downloaded and copied to mipmap directories"
+          fi
+
+      - name: Build APK with detailed logging
+        run: |
+          cd $HOME/android-project
+          chmod +x gradlew
+          
+          echo "========================================"
+          echo "=== Starting Gradle Build ==="
+          echo "========================================"
+          
+          # Run gradle build with detailed output
+          ./gradlew assembleRelease --info --stacktrace 2>&1 | tee build.log || true
+          
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo ""
+          echo "========================================"
+          echo "=== Build completed with exit code: $BUILD_EXIT_CODE ==="
+          echo "========================================"
+          
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo ""
+            echo "========================================"
+            echo "=== BUILD FAILED - Full Log ==="
+            echo "========================================"
+            cat build.log
+            exit $BUILD_EXIT_CODE
+          fi
+
+      - name: Debug - List build outputs
+        run: |
+          echo "========================================"
+          echo "=== DEBUG: Listing all directories ==="
+          echo "========================================"
+          
+          echo "=== Current directory ==="
+          pwd
+          
+          echo ""
+          echo "=== android-project directory ==="
+          ls -la $HOME/android-project/ 2>/dev/null || echo "Not found"
+          
+          echo ""
+          echo "=== app directory ==="
+          ls -la $HOME/android-project/app/ 2>/dev/null || echo "Not found"
+          
+          echo ""
+          echo "=== build directory ==="
+          ls -laR $HOME/android-project/app/build/ 2>/dev/null || echo "Not found"
+          
+          echo ""
+          echo "=== Finding all APK files ==="
+          find $HOME/android-project -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+          
+          echo ""
+          echo "=== Build log (last 50 lines) ==="
+          tail -50 $HOME/android-project/build.log 2>/dev/null || echo "No build log found"
+
+      - name: Sign APK
+        id: sign_apk
+        run: |
+          cd $HOME/android-project
+          
+          echo "=== Looking for unsigned APK ==="
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "❌ Error: No APK file found!"
+            echo "=== Listing all files in outputs ==="
+            find app/build/outputs -type f 2>/dev/null || echo "No files found"
+            exit 1
+          fi
+          
+          echo "✅ Found APK: $UNSIGNED_APK"
+          
+          # Generate debug keystore
+          echo "=== Generating debug keystore ==="
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          
+          # Create safe filename
+          SAFE_APP_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_' | tr -cd '[:alnum:]_-')
+          OUTPUT_APK="app/build/outputs/apk/release/${SAFE_APP_NAME}-v${{ github.event.inputs.app_version }}.apk"
+          
+          # Sign the APK
+          echo "=== Signing APK ==="
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --in "$UNSIGNED_APK" --out "$OUTPUT_APK"
+          
+          echo "✅ Signed APK created: $OUTPUT_APK"
+          ls -la "$OUTPUT_APK"
+          
+          # Set outputs for other steps
+          echo "apk_path=$OUTPUT_APK" >> $GITHUB_OUTPUT
+          echo "apk_name=${SAFE_APP_NAME}-v${{ github.event.inputs.app_version }}.apk" >> $GITHUB_OUTPUT
+          
+          # Also save to file for artifact upload
+          echo "APK_PATH=$OUTPUT_APK" >> $GITHUB_ENV
+          echo "APK_NAME=${SAFE_APP_NAME}-v${{ github.event.inputs.app_version }}.apk" >> $GITHUB_ENV
+
+      - name: Upload APK to GitHub Releases
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        if: success()
+        with:
+          tag_name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }}
+          name: ${{ github.event.inputs.app_name }} v${{ github.event.inputs.app_version }}
+          body: |
+            ## 📱 APK Download
+            
+            **APK File:** `${{ steps.sign_apk.outputs.apk_name }}`
+            
+            ### 🔗 Download Links
+            - **Direct Download:** ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }}/${{ steps.sign_apk.outputs.apk_name }}
+            - **Release Page:** ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }}
+            
+            ### 📋 Build Information
+            | Property | Value |
+            |----------|-------|
+            | **App Name** | ${{ github.event.inputs.app_name }} |
+            | **Package** | ${{ github.event.inputs.package_name }} |
+            | **Version** | ${{ github.event.inputs.app_version }} |
+            | **Version Code** | ${{ github.event.inputs.version_code }} |
+            | **Website** | ${{ github.event.inputs.website_url }} |
+            | **Build Date** | ${{ github.event.head_commit.timestamp }} |
+            | **Run Number** | ${{ github.run_number }} |
+            
+            ### 📲 Installation
+            1. Download the APK file from the link above
+            2. Enable "Install from Unknown Sources" in your Android settings
+            3. Open the downloaded APK file to install
+          files: |
+            /home/runner/android-project/app/build/outputs/apk/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Build Summary with Download Link
+        if: always()
+        run: |
+          echo "# 🚀 WebToApk Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📱 App Information" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **App Name** | ${{ github.event.inputs.app_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | ${{ github.event.inputs.package_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ github.event.inputs.app_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version Code** | ${{ github.event.inputs.version_code }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Website** | ${{ github.event.inputs.website_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "## ✅ Build Status: SUCCESS" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## 📥 Download Your APK" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔗 Direct Download Link" >> $GITHUB_STEP_SUMMARY
+            echo "**[⬇️ Download ${{ steps.sign_apk.outputs.apk_name }}](${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }}/${{ steps.sign_apk.outputs.apk_name }})**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📄 Release Page" >> $GITHUB_STEP_SUMMARY
+            echo "**[🌐 View Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}-${{ github.run_number }})**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📦 Artifact" >> $GITHUB_STEP_SUMMARY
+            echo "You can also download the APK from the **Artifacts** section below." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Build Status: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the build logs above for error details." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔍 Common Issues" >> $GITHUB_STEP_SUMMARY
+            echo "- Invalid website URL" >> $GITHUB_STEP_SUMMARY
+            echo "- Invalid package name format" >> $GITHUB_STEP_SUMMARY
+            echo "- Network issues during build" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Built with WebToApk Builder*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ${{ github.event.inputs.app_name }}-v${{ github.event.inputs.app_version }}
+          path: /home/runner/android-project/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: |
+            /home/runner/android-project/build.log
+          retention-days: 7
