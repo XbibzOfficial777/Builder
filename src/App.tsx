@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Globe, 
   Smartphone, 
@@ -13,7 +13,10 @@ import {
   Info,
   FileCode,
   Settings,
-  ExternalLink
+  ExternalLink,
+  Terminal,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +26,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import './App.css'
 
 interface BuildStatus {
@@ -31,6 +36,8 @@ interface BuildStatus {
   runId?: number
   runUrl?: string
   downloadUrl?: string
+  logs?: string
+  releaseUrl?: string
 }
 
 function App() {
@@ -51,10 +58,27 @@ function App() {
   })
 
   const [activeTab, setActiveTab] = useState('basic')
+  const [showLogs, setShowLogs] = useState(false)
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedRepo = localStorage.getItem('githubRepo')
+    const savedToken = localStorage.getItem('githubToken')
+    if (savedRepo || savedToken) {
+      setFormData(prev => ({
+        ...prev,
+        githubRepo: savedRepo || '',
+        githubToken: savedToken || ''
+      }))
+    }
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+    if (name === 'githubRepo' || name === 'githubToken') {
+      localStorage.setItem(name, value)
+    }
   }
 
   const validateForm = () => {
@@ -79,6 +103,40 @@ function App() {
       return false
     }
     return true
+  }
+
+  const fetchLogs = async (runId: number) => {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${formData.githubRepo}/actions/runs/${runId}/jobs`,
+        {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `token ${formData.githubToken}`
+          }
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        const jobId = data.jobs?.[0]?.id
+        if (jobId) {
+          const logsResponse = await fetch(
+            `https://api.github.com/repos/${formData.githubRepo}/actions/jobs/${jobId}/logs`,
+            {
+              headers: {
+                'Authorization': `token ${formData.githubToken}`
+              }
+            }
+          )
+          if (logsResponse.ok) {
+            const logsText = await logsResponse.text()
+            setBuildStatus(prev => ({ ...prev, logs: logsText }))
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching logs:', error)
+    }
   }
 
   const triggerBuild = async () => {
@@ -113,10 +171,8 @@ function App() {
       if (response.ok) {
         setBuildStatus({ 
           status: 'building', 
-          message: 'Build triggered successfully! Check your GitHub Actions for progress.' 
+          message: 'Build triggered successfully! Waiting for progress...' 
         })
-        
-        // Poll for build status
         pollBuildStatus()
       } else {
         const errorData = await response.json()
@@ -135,12 +191,12 @@ function App() {
 
   const pollBuildStatus = async () => {
     let attempts = 0
-    const maxAttempts = 60 // Poll for 10 minutes (10 seconds interval)
+    const maxAttempts = 120 // Poll for 20 minutes
 
     const checkStatus = async () => {
       try {
         const response = await fetch(
-          `https://api.github.com/repos/${formData.githubRepo}/actions/runs`,
+          `https://api.github.com/repos/${formData.githubRepo}/actions/runs?event=workflow_dispatch`,
           {
             headers: {
               'Accept': 'application/vnd.github.v3+json',
@@ -156,28 +212,51 @@ function App() {
           if (latestRun) {
             if (latestRun.status === 'completed') {
               if (latestRun.conclusion === 'success') {
+                // Fetch release to get the download link
+                const releaseResponse = await fetch(
+                  `https://api.github.com/repos/${formData.githubRepo}/releases`,
+                  {
+                    headers: {
+                      'Accept': 'application/vnd.github.v3+json',
+                      'Authorization': `token ${formData.githubToken}`
+                    }
+                  }
+                )
+                let releaseUrl = ''
+                if (releaseResponse.ok) {
+                  const releases = await releaseResponse.json()
+                  releaseUrl = releases[0]?.html_url || ''
+                }
+
                 setBuildStatus({
                   status: 'success',
                   message: 'Build completed successfully!',
                   runId: latestRun.id,
                   runUrl: latestRun.html_url,
-                  downloadUrl: `${latestRun.html_url}/artifacts`
+                  downloadUrl: `${latestRun.html_url}/artifacts`,
+                  releaseUrl: releaseUrl
                 })
+                fetchLogs(latestRun.id)
                 return true
               } else {
                 setBuildStatus({
                   status: 'error',
                   message: `Build failed: ${latestRun.conclusion}`,
-                  runUrl: latestRun.html_url
+                  runUrl: latestRun.html_url,
+                  runId: latestRun.id
                 })
+                fetchLogs(latestRun.id)
                 return true
               }
             } else {
               setBuildStatus({
                 status: 'building',
                 message: `Build in progress: ${latestRun.status}...`,
-                runUrl: latestRun.html_url
+                runUrl: latestRun.html_url,
+                runId: latestRun.id
               })
+              // Occasionally fetch logs during build
+              if (attempts % 3 === 0) fetchLogs(latestRun.id)
             }
           }
         }
@@ -197,13 +276,11 @@ function App() {
       return false
     }
 
-    // Wait a bit before starting to poll
     setTimeout(checkStatus, 5000)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-      {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white pb-12">
       <header className="border-b border-slate-700/50 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
@@ -228,10 +305,8 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Column - Form */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
               <CardHeader>
@@ -288,21 +363,6 @@ function App() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="appVersion" className="text-slate-300 flex items-center gap-2">
-                        <Package className="w-4 h-4 text-yellow-400" />
-                        App Version
-                      </Label>
-                      <Input
-                        id="appVersion"
-                        name="appVersion"
-                        placeholder="1.0.0"
-                        value={formData.appVersion}
-                        onChange={handleInputChange}
-                        className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
                       <Label htmlFor="iconUrl" className="text-slate-300 flex items-center gap-2">
                         <Image className="w-4 h-4 text-purple-400" />
                         Icon URL (optional)
@@ -319,297 +379,105 @@ function App() {
                   </TabsContent>
 
                   <TabsContent value="advanced" className="space-y-4 mt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="packageName" className="text-slate-300 flex items-center gap-2">
-                        <FileCode className="w-4 h-4 text-orange-400" />
-                        Package Name *
-                      </Label>
-                      <Input
-                        id="packageName"
-                        name="packageName"
-                        placeholder="com.example.app"
-                        value={formData.packageName}
-                        onChange={handleInputChange}
-                        className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="packageName" className="text-slate-300">Package Name</Label>
+                        <Input id="packageName" name="packageName" value={formData.packageName} onChange={handleInputChange} className="bg-slate-900/50 border-slate-600 text-white" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="appVersion" className="text-slate-300">Version</Label>
+                        <Input id="appVersion" name="appVersion" value={formData.appVersion} onChange={handleInputChange} className="bg-slate-900/50 border-slate-600 text-white" />
+                      </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="versionCode" className="text-slate-300 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-cyan-400" />
-                        Version Code
-                      </Label>
-                      <Input
-                        id="versionCode"
-                        name="versionCode"
-                        placeholder="1"
-                        value={formData.versionCode}
-                        onChange={handleInputChange}
-                        className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                      />
-                    </div>
-
-                    <Separator className="bg-slate-700" />
-
-                    <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-4">
-                      <h4 className="text-blue-400 font-medium mb-2 flex items-center gap-2">
-                        <Github className="w-4 h-4" />
-                        GitHub Configuration
+                    <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-4 space-y-4">
+                      <h4 className="text-blue-400 font-medium flex items-center gap-2">
+                        <Github className="w-4 h-4" /> GitHub Configuration
                       </h4>
-                      <p className="text-sm text-slate-400 mb-4">
-                        Required to trigger GitHub Actions workflow
-                      </p>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="githubRepo" className="text-slate-300">
-                            Repository (owner/repo) *
-                          </Label>
-                          <Input
-                            id="githubRepo"
-                            name="githubRepo"
-                            placeholder="username/webtoapk-builder"
-                            value={formData.githubRepo}
-                            onChange={handleInputChange}
-                            className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="githubToken" className="text-slate-300">
-                            Personal Access Token *
-                          </Label>
-                          <Input
-                            id="githubToken"
-                            name="githubToken"
-                            type="password"
-                            placeholder="ghp_xxxxxxxxxxxx"
-                            value={formData.githubToken}
-                            onChange={handleInputChange}
-                            className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
-                          />
-                          <p className="text-xs text-slate-500">
-                            Token needs {'repo'} scope.{' '}
-                            <a 
-                              href="https://github.com/settings/tokens" 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:underline"
-                            >
-                              Create token
-                            </a>
-                          </p>
-                        </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="githubRepo" className="text-slate-300">Repository (owner/repo)</Label>
+                        <Input id="githubRepo" name="githubRepo" placeholder="username/repo" value={formData.githubRepo} onChange={handleInputChange} className="bg-slate-900/50 border-slate-600 text-white" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="githubToken" className="text-slate-300">Personal Access Token</Label>
+                        <Input id="githubToken" name="githubToken" type="password" placeholder="ghp_..." value={formData.githubToken} onChange={handleInputChange} className="bg-slate-900/50 border-slate-600 text-white" />
                       </div>
                     </div>
                   </TabsContent>
                 </Tabs>
 
-                <Separator className="my-6 bg-slate-700" />
-
-                <Button
-                  onClick={triggerBuild}
-                  disabled={buildStatus.status === 'building'}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-6"
-                >
-                  {buildStatus.status === 'building' ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Building APK...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-5 h-5 mr-2" />
-                      Build APK
-                    </>
-                  )}
+                <Button onClick={triggerBuild} disabled={buildStatus.status === 'building'} className="w-full mt-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-6">
+                  {buildStatus.status === 'building' ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Building APK...</> : <><Play className="w-5 h-5 mr-2" /> Build APK</>}
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Status Alert */}
             {buildStatus.status !== 'idle' && (
-              <Alert className={`${
-                buildStatus.status === 'success' ? 'bg-green-900/30 border-green-700/50' :
-                buildStatus.status === 'error' ? 'bg-red-900/30 border-red-700/50' :
-                'bg-blue-900/30 border-blue-700/50'
-              }`}>
-                {buildStatus.status === 'success' ? (
-                  <CheckCircle className="w-5 h-5 text-green-400" />
-                ) : buildStatus.status === 'error' ? (
-                  <AlertCircle className="w-5 h-5 text-red-400" />
-                ) : (
-                  <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-                )}
-                <AlertTitle className={`${
-                  buildStatus.status === 'success' ? 'text-green-400' :
-                  buildStatus.status === 'error' ? 'text-red-400' :
-                  'text-blue-400'
-                }`}>
-                  {buildStatus.status === 'success' ? 'Success' :
-                   buildStatus.status === 'error' ? 'Error' :
-                   'Building'}
-                </AlertTitle>
-                <AlertDescription className="text-slate-300">
-                  {buildStatus.message}
-                </AlertDescription>
-              </Alert>
-            )}
+              <div className="space-y-6">
+                <Alert className={`${buildStatus.status === 'success' ? 'bg-green-900/30 border-green-700/50' : buildStatus.status === 'error' ? 'bg-red-900/30 border-red-700/50' : 'bg-blue-900/30 border-blue-700/50'}`}>
+                  {buildStatus.status === 'success' ? <CheckCircle className="w-5 h-5 text-green-400" /> : buildStatus.status === 'error' ? <AlertCircle className="w-5 h-5 text-red-400" /> : <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />}
+                  <AlertTitle className={buildStatus.status === 'success' ? 'text-green-400' : buildStatus.status === 'error' ? 'text-red-400' : 'text-blue-400'}>
+                    {buildStatus.status.toUpperCase()}
+                  </AlertTitle>
+                  <AlertDescription className="text-slate-300">{buildStatus.message}</AlertDescription>
+                </Alert>
 
-            {/* Download Section */}
-            {buildStatus.status === 'success' && buildStatus.runUrl && (
-              <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Download className="w-5 h-5 text-green-400" />
-                    Download APK
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-slate-400">
-                    Your APK has been built successfully! You can download it from GitHub Actions artifacts.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(buildStatus.runUrl, '_blank')}
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                    >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      View on GitHub
-                    </Button>
-                    {buildStatus.downloadUrl && (
-                      <Button
-                        variant="outline"
-                        onClick={() => window.open(buildStatus.downloadUrl, '_blank')}
-                        className="border-green-600 text-green-400 hover:bg-green-900/30"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Artifacts
+                {(buildStatus.releaseUrl || buildStatus.runUrl) && (
+                  <Card className="bg-slate-800/50 border-slate-700/50">
+                    <CardHeader><CardTitle className="text-white flex items-center gap-2"><Download className="w-5 h-5 text-green-400" /> Downloads & Links</CardTitle></CardHeader>
+                    <CardContent className="flex flex-wrap gap-3">
+                      {buildStatus.releaseUrl && (
+                        <Button onClick={() => window.open(buildStatus.releaseUrl, '_blank')} className="bg-green-600 hover:bg-green-700 text-white">
+                          <Download className="w-4 h-4 mr-2" /> Download APK (Release)
+                        </Button>
+                      )}
+                      {buildStatus.runUrl && (
+                        <Button variant="outline" onClick={() => window.open(buildStatus.runUrl, '_blank')} className="border-slate-600 text-slate-300">
+                          <ExternalLink className="w-4 h-4 mr-2" /> View Build Run
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Collapsible open={showLogs} onOpenChange={setShowLogs} className="w-full">
+                  <Card className="bg-slate-900 border-slate-700 overflow-hidden">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" className="w-full flex items-center justify-between p-4 text-slate-300 hover:bg-slate-800">
+                        <div className="flex items-center gap-2"><Terminal className="w-4 h-4" /> <span>Build Logs</span></div>
+                        {showLogs ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <ScrollArea className="h-[400px] w-full bg-black/50 p-4 font-mono text-xs text-slate-400">
+                        <pre className="whitespace-pre-wrap">{buildStatus.logs || 'Waiting for logs...'}</pre>
+                      </ScrollArea>
+                    </CollapsibleContent>
+                  </Card>
+                </Collapsible>
+              </div>
             )}
           </div>
 
-          {/* Right Column - Info */}
           <div className="space-y-6">
             <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">How It Works</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-white">How it works</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-blue-400 font-bold text-sm">1</span>
+                {[
+                  { id: 1, title: 'Fill Form', desc: 'Enter website and app details', color: 'bg-blue-500/20', text: 'text-blue-400' },
+                  { id: 2, title: 'GitHub Actions', desc: 'Build is processed on GitHub', color: 'bg-purple-500/20', text: 'text-purple-400' },
+                  { id: 3, title: 'Download APK', desc: 'Get your signed APK file', color: 'bg-green-500/20', text: 'text-green-400' }
+                ].map(step => (
+                  <div key={step.id} className="flex gap-3">
+                    <div className={`w-8 h-8 ${step.color} rounded-lg flex items-center justify-center flex-shrink-0`}><span className={`${step.text} font-bold text-sm`}>{step.id}</span></div>
+                    <div><h4 className="text-slate-200 font-medium">{step.title}</h4><p className="text-sm text-slate-400">{step.desc}</p></div>
                   </div>
-                  <div>
-                    <h4 className="text-slate-200 font-medium">Fill the Form</h4>
-                    <p className="text-sm text-slate-400">Enter your website URL and app details</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-purple-400 font-bold text-sm">2</span>
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-medium">GitHub Actions</h4>
-                    <p className="text-sm text-slate-400">Build is triggered on GitHub Actions</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-green-400 font-bold text-sm">3</span>
-                  </div>
-                  <div>
-                    <h4 className="text-slate-200 font-medium">Download APK</h4>
-                    <p className="text-sm text-slate-400">Get your signed APK file</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">Features</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-slate-400">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Custom app name & icon
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Version control
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Signed APK output
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Pull-to-refresh
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Back button navigation
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    Progress indicator
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white">Setup Required</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-400">
-                <p>
-                  1. Fork this repository to your GitHub account
-                </p>
-                <p>
-                  2. Enable GitHub Actions in your forked repo
-                </p>
-                <p>
-                  3. Create a Personal Access Token with {'repo'} scope
-                </p>
-                <p>
-                  4. Enter your repo and token in the Advanced tab
-                </p>
+                ))}
               </CardContent>
             </Card>
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-700/50 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-slate-500 text-sm">
-              WebToApk Builder - Powered by GitHub Actions
-            </p>
-            <div className="flex items-center gap-4">
-              <a 
-                href="https://github.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                <Github className="w-5 h-5" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }
