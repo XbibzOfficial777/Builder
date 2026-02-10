@@ -29,10 +29,22 @@ Click the "Fork" button at the top right of this page to create your own copy.
 
 ### 2. Enable GitHub Pages
 
-1. Go to your forked repository settings
-2. Navigate to "Pages" section
-3. Select "GitHub Actions" as the source
-4. The site will be published automatically
+#### Option A: Automatic (Recommended)
+The workflow will try to enable Pages automatically. If you get an error, use Option B.
+
+#### Option B: Manual Enable
+1. Go to your forked repository **Settings**
+2. Scroll down to **Pages** section (in the left sidebar)
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**
+4. Click **Save**
+5. Go to **Actions** tab and run the "Deploy to GitHub Pages" workflow manually
+
+#### Option C: Classic GitHub Pages
+If GitHub Actions doesn't work:
+1. Go to **Settings > Pages**
+2. Set **Source** to **Deploy from a branch**
+3. Select **gh-pages** branch (create if doesn't exist)
+4. Click **Save**
 
 ### 3. Create GitHub Personal Access Token
 
@@ -145,6 +157,30 @@ webView.setWebChromeClient(new WebChromeClient() {
 ```
 
 ## Troubleshooting
+
+### GitHub Pages Error: "Get Pages site failed"
+
+This error means GitHub Pages is not enabled. Fix it by:
+
+1. Go to your repository **Settings > Pages**
+2. Enable Pages by selecting a source (GitHub Actions or Branch)
+3. Re-run the workflow
+
+### Deploy Workflow Fails
+
+If the deploy workflow keeps failing:
+
+1. **Check Permissions**: Go to **Settings > Actions > General** and ensure:
+   - **Workflow permissions** is set to "Read and write permissions"
+   - "Allow GitHub Actions to create and approve pull requests" is checked
+
+2. **Enable Pages Manually**: Follow Option B in the setup instructions above
+
+3. **Use Alternative Deploy**: You can deploy manually:
+   ```bash
+   npm run build
+   # Upload dist/ folder to gh-pages branch
+   ```
 
 ### Build Fails
 
